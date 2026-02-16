@@ -1,19 +1,45 @@
-﻿import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QuestionCard from "./components/questioncard";
-import { questions } from "./data/questions";
 
 export default function App() {
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState("");
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
 
+  useEffect(() => {
+    fetchQuestions();
+  }, []);
+
+  async function fetchQuestions() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/questions/");
+      if (!response.ok) {
+        throw new Error("Could not fetch questions.");
+      }
+
+      const data = await response.json();
+      setQuestions(data.questions || []);
+    } catch {
+      setError("Failed to load questions from backend.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const totalQuestions = questions.length;
   const currentQuestion = questions[currentQuestionIndex];
   const showAnswer = selectedOption !== "";
-  const completedQuestions = finished ? questions.length : currentQuestionIndex;
-  const completedPercent = started
-    ? Math.round((completedQuestions / questions.length) * 100)
+  const completedQuestions = finished ? totalQuestions : currentQuestionIndex;
+  const completedPercent = started && totalQuestions > 0
+    ? Math.round((completedQuestions / totalQuestions) * 100)
     : 0;
   const headerProgressPercent = completedPercent;
 
@@ -29,6 +55,7 @@ export default function App() {
   );
 
   function startQuiz() {
+    if (totalQuestions === 0) return;
     setStarted(true);
   }
 
@@ -43,7 +70,7 @@ export default function App() {
   }
 
   function goToNextQuestion() {
-    if (currentQuestionIndex < questions.length - 1) {
+    if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex((prevIndex) => prevIndex + 1);
       setSelectedOption("");
       return;
@@ -57,7 +84,7 @@ export default function App() {
     setSelectedOption("");
     setScore(0);
     setFinished(false);
-    setStarted(true);
+    setStarted(totalQuestions > 0);
   }
 
   return (
@@ -74,7 +101,29 @@ export default function App() {
         <div id="numbers">{completedPercent}%</div>
       </section>
 
-      {!started && (
+      {loading && (
+        <section className="quiz-panel">
+          <p>Loading questions...</p>
+        </section>
+      )}
+
+      {!loading && error && (
+        <section className="quiz-panel">
+          <p>{error}</p>
+          <button type="button" onClick={fetchQuestions}>
+            Retry
+          </button>
+        </section>
+      )}
+
+      {!loading && !error && totalQuestions === 0 && (
+        <section className="quiz-panel">
+          <h2>No Questions Yet</h2>
+          <p>Add questions from Django admin to start the quiz.</p>
+        </section>
+      )}
+
+      {!loading && !error && totalQuestions > 0 && !started && (
         <section className="quiz-panel">
           <h2>Welcome</h2>
           <p>Click start and answer each question. Score goes up for each correct answer.</p>
@@ -84,10 +133,10 @@ export default function App() {
         </section>
       )}
 
-      {started && !finished && (
+      {!loading && !error && totalQuestions > 0 && started && !finished && (
         <section className="quiz-panel">
           <p className="question-count">
-            Question {currentQuestionIndex + 1} of {questions.length} | Score: {score}/{questions.length}
+            Question {currentQuestionIndex + 1} of {totalQuestions} | Score: {score}/{totalQuestions}
           </p>
           <QuestionCard
             data={currentQuestion}
@@ -98,13 +147,13 @@ export default function App() {
           {showAnswer && <p className="answer-text">Correct answer: {currentQuestion.answer}</p>}
           {showAnswer && (
             <button type="button" className="next-btn" onClick={goToNextQuestion}>
-              {currentQuestionIndex === questions.length - 1 ? "Finish Quiz" : "Next Question"}
+              {currentQuestionIndex === totalQuestions - 1 ? "Finish Quiz" : "Next Question"}
             </button>
           )}
         </section>
       )}
 
-      {finished && (
+      {!loading && !error && totalQuestions > 0 && finished && (
         <section className="quiz-panel finished-panel">
           <div className="confetti" aria-hidden="true">
             {confettiPieces.map((piece) => (
@@ -121,7 +170,7 @@ export default function App() {
           </div>
           <h2>Quiz Finished</h2>
           <p>
-            Final score: {score} / {questions.length}
+            Final score: {score} / {totalQuestions}
           </p>
           <button type="button" onClick={restartQuiz}>
             Restart Quiz
