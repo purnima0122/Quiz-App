@@ -10,10 +10,23 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState("");
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [token, setToken] = useState(localStorage.getItem("quizToken") || "");
+  const [authUser, setAuthUser] = useState(null);
+  const [authMessage, setAuthMessage] = useState("");
+  const [authMenuMode, setAuthMenuMode] = useState("");
 
   useEffect(() => {
     fetchQuestions();
   }, []);
+
+  useEffect(() => {
+    if (token) {
+      fetchProfile(token);
+    }
+  }, [token]);
 
   async function fetchQuestions() {
     setLoading(true);
@@ -32,6 +45,101 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function fetchProfile(currentToken) {
+    try {
+      const response = await fetch("/api/profile/", {
+        headers: {
+          Authorization: `Token ${currentToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        setAuthUser(null);
+        return;
+      }
+
+      const data = await response.json();
+      setAuthUser(data);
+    } catch {
+      setAuthUser(null);
+    }
+  }
+
+  async function handleRegister() {
+    setAuthMessage("");
+    try {
+      const response = await fetch("/api/register/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, email, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAuthMessage(data.error || "Register failed");
+        return;
+      }
+      setToken(data.token);
+      localStorage.setItem("quizToken", data.token);
+      setAuthUser(data.user);
+      setAuthMessage("Registered and logged in");
+      setAuthMenuMode("");
+    } catch {
+      setAuthMessage("Register failed");
+    }
+  }
+
+  async function handleLogin() {
+    setAuthMessage("");
+    try {
+      const response = await fetch("/api/login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAuthMessage(data.error || "Login failed");
+        return;
+      }
+      setToken(data.token);
+      localStorage.setItem("quizToken", data.token);
+      setAuthUser(data.user);
+      setAuthMessage("Logged in");
+      setAuthMenuMode("");
+    } catch {
+      setAuthMessage("Login failed");
+    }
+  }
+
+  async function handleLogout() {
+    if (!token) return;
+    try {
+      await fetch("/api/logout/", {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${token}`,
+        },
+      });
+    } catch {
+      // Ignore network errors and clear local auth anyway.
+    }
+    localStorage.removeItem("quizToken");
+    setToken("");
+    setAuthUser(null);
+    setAuthMessage("Logged out");
+    setAuthMenuMode("");
+  }
+
+  function openRegisterMenu() {
+    setAuthMessage("");
+    setAuthMenuMode((prev) => (prev === "register" ? "" : "register"));
+  }
+
+  function openLoginMenu() {
+    setAuthMessage("");
+    setAuthMenuMode((prev) => (prev === "login" ? "" : "login"));
   }
 
   const totalQuestions = questions.length;
@@ -90,6 +198,59 @@ export default function App() {
   return (
     <main className="container">
       <h1 className="app-title">Quiz Game</h1>
+      <section className="auth-bar">
+        <div className="auth-top-row">
+          <div className="auth-left-actions">
+            <button type="button" onClick={openRegisterMenu}>
+              Register
+            </button>
+            <button type="button" onClick={openLoginMenu}>
+              Login
+            </button>
+          </div>
+          <div className="auth-right-actions">
+            <button type="button" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        {authMenuMode && (
+          <div className="auth-dropdown">
+            <input
+              type="text"
+              placeholder="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+            />
+            {authMenuMode === "register" && (
+              <input
+                type="email"
+                placeholder="email (optional)"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            )}
+            <input
+              type="password"
+              placeholder="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <button
+              type="button"
+              onClick={authMenuMode === "register" ? handleRegister : handleLogin}
+            >
+              {authMenuMode === "register" ? "Submit Register" : "Submit Login"}
+            </button>
+          </div>
+        )}
+
+        <p className="auth-status">
+          {authUser ? `Logged in as ${authUser.username}` : "Guest mode"}
+          {authMessage ? ` | ${authMessage}` : ""}
+        </p>
+      </section>
 
       <section className="head-container">
         <div className="details">
